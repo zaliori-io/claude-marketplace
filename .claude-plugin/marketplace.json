@@ -13,7 +13,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/zaliori-io/claude-marketplace.git",
-        "sha": "c249a84943fe0071ab054b0c905b054b4eac3090"
+        "sha": "2bf76d55d90bfd03e22b329599735c3f6070576e"
       },
       "homepage": "https://github.com/zaliori-io/claude-marketplace"
     }
