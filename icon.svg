@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="leftHalf">
+      <rect x="0" y="0" width="256" height="512"/>
+    </clipPath>
+    <clipPath id="rightHalf">
+      <rect x="256" y="0" width="256" height="512"/>
+    </clipPath>
+    <clipPath id="heartClip">
+      <path d="M 92,130 A 82,82,0,0,1,256,130 A 82,82,0,0,1,420,130 Q 420,250,256,378 Q 92,250,92,130 Z"/>
+    </clipPath>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="80" fill="#0B1D38"/>
+
+  <!--
+    Heart path:
+      M 92,130        left start (rim of left arc)
+      A 82,82,0,0,1,256,130   left bump arc  (centre ≈ 174,130)
+      A 82,82,0,0,1,420,130   right bump arc (centre ≈ 338,130)
+      Q 420,250,256,378       right side to point
+      Q 92,250,92,130         left side back up
+    Right-side boundary at key y values (verified):
+      y=210 → x≈402   y=240 → x≈390   y=250 → x≈381
+    Left-side boundary at y=240 → x≈125
+  -->
+
+  <!-- Heart — left half  (Anthropic / Claude coral-orange) -->
+  <path d="M 92,130 A 82,82,0,0,1,256,130 A 82,82,0,0,1,420,130 Q 420,250,256,378 Q 92,250,92,130 Z"
+        fill="#C85B38" clip-path="url(#leftHalf)"/>
+
+  <!-- Heart — right half (Saxo corporate blue) -->
+  <path d="M 92,130 A 82,82,0,0,1,256,130 A 82,82,0,0,1,420,130 Q 420,250,256,378 Q 92,250,92,130 Z"
+        fill="#003082" clip-path="url(#rightHalf)"/>
+
+  <!-- Heart border (gives definition against dark bg) -->
+  <path d="M 92,130 A 82,82,0,0,1,256,130 A 82,82,0,0,1,420,130 Q 420,250,256,378 Q 92,250,92,130 Z"
+        fill="none" stroke="white" stroke-width="3" opacity="0.25"/>
+
+  <!-- Centre divider — clipped to heart interior -->
+  <line x1="256" y1="128" x2="256" y2="380"
+        stroke="white" stroke-width="2.5" opacity="0.4"
+        clip-path="url(#heartClip)"/>
+
+  <!--
+    ══ LEFT HALF: Claude asterisk ══
+    6 elongated ovals (3 pairs, rotated 0 / 60 / 120 °) centred at (174, 242).
+    rx=6.5  ry=27 gives the distinctive thin-petal look of the Claude icon.
+    Centre dot finishes it off.
+  -->
+  <g transform="translate(174, 242)" filter="url(#glow)">
+    <ellipse rx="6.5" ry="27" fill="white" transform="rotate(0)"/>
+    <ellipse rx="6.5" ry="27" fill="white" transform="rotate(60)"/>
+    <ellipse rx="6.5" ry="27" fill="white" transform="rotate(120)"/>
+    <circle  r="7"            fill="white"/>
+  </g>
+
+  <!--
+    ══ RIGHT HALF: 3 candlestick bars ══
+    Centres at x = 300, 330, 360.  Body width 16 px.
+    Rightmost body edge: 360+8 = 368.  At y≈240 heart boundary ≈ 390.  ✓
+    Leftmost body edge:  300-8 = 292.  Distance from divider (256): 36 px.  ✓
+    Wicks extend ±32 px from body midpoint; tallest wick top y=204 → boundary ≈ 404. ✓
+  -->
+
+  <!-- Candle 1  x=300  (medium, slightly bearish — lower close) -->
+  <line x1="300" y1="214" x2="300" y2="282"
+        stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <rect x="292" y="228" width="16" height="32" rx="2.5" fill="white" opacity="0.72"/>
+
+  <!-- Candle 2  x=330  (taller bullish body) -->
+  <line x1="330" y1="208" x2="330" y2="278"
+        stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <rect x="322" y="218" width="16" height="38" rx="2.5" fill="white" opacity="0.90"/>
+
+  <!-- Candle 3  x=360  (tallest — strongest bullish move) -->
+  <line x1="360" y1="204" x2="360" y2="274"
+        stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <rect x="352" y="212" width="16" height="42" rx="2.5" fill="white" opacity="0.95"/>
+
+</svg>

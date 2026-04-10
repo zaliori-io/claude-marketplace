@@ -1,0 +1,25 @@
+{
+  "name": "saxotrader",
+  "version": "1.1.0",
+  "description": "Live prices, instrument lookup, and portfolio data from your Saxo Bank account — directly in Claude. Read-only, no order placement. v1.1.0 · github.com/zaliori-io/claude-marketplace · hello@zaliori.com · Requires your own Saxo account and app registration. MIT-licensed, not affiliated with Saxo Bank A/S.",
+  "author": {
+    "name": "zaliori.io",
+    "url": "https://github.com/zaliori-io"
+  },
+  "homepage": "https://github.com/zaliori-io/claude-marketplace",
+  "repository": "https://github.com/zaliori-io/claude-marketplace",
+  "documentation": "https://github.com/zaliori-io/claude-marketplace/blob/main/README.md",
+  "bugs": {
+    "url": "https://github.com/zaliori-io/claude-marketplace/issues",
+    "email": "hello@zaliori.com"
+  },
+  "prompts": [
+    "What's the live price of ASML?",
+    "Show my open positions",
+    "Find all exchanges where Wheaton Precious Metals trades",
+    "What's the bid/ask spread on the iShares gold ETC?",
+    "Look up the Saxo UIC for Apple"
+  ],
+  "license": "MIT",
+  "keywords": ["saxo", "finance", "trading", "market-data", "portfolio", "openapi"]
+}
