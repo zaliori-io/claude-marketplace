@@ -195,7 +195,7 @@ python skills/saxo/scripts/saxo_auth.py logout   # delete stored tokens
 Run these two commands in your terminal:
 
 ```bash
-claude plugin marketplace add zaliori/claude-marketplace
+claude plugin marketplace add zaliori-io/claude-marketplace
 claude plugin install saxotrader@saxotrader
 ```
 
@@ -354,7 +354,7 @@ updated and the cache directory is left in a broken state.
 rm -rf ~/.claude/plugins/cache/saxotrader
 rm -rf ~/.claude/plugins/marketplaces/saxotrader
 claude plugin uninstall saxotrader
-claude plugin marketplace add zaliori/claude-marketplace
+claude plugin marketplace add zaliori-io/claude-marketplace
 claude plugin install saxotrader@saxotrader
 ```
 

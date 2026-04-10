@@ -12,10 +12,10 @@
       "category": "finance",
       "source": {
         "source": "url",
-        "url": "https://github.com/zaliori/claude-marketplace.git",
+        "url": "https://github.com/zaliori-io/claude-marketplace.git",
         "sha": "c249a84943fe0071ab054b0c905b054b4eac3090"
       },
-      "homepage": "https://github.com/zaliori/claude-marketplace"
+      "homepage": "https://github.com/zaliori-io/claude-marketplace"
     }
   ]
 }

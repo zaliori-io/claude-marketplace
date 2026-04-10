@@ -4,10 +4,10 @@
   "description": "Saxo Bank OpenAPI integration for Claude Code — live prices, instrument resolution, portfolio positions, and account info. Unofficial MIT-licensed project, not affiliated with Saxo Bank A/S.",
   "author": {
     "name": "Robert Emsbach",
-    "url": "https://github.com/zaliori"
+    "url": "https://github.com/zaliori-io"
   },
-  "homepage": "https://github.com/zaliori/claude-marketplace",
-  "repository": "https://github.com/zaliori/claude-marketplace",
+  "homepage": "https://github.com/zaliori-io/claude-marketplace",
+  "repository": "https://github.com/zaliori-io/claude-marketplace",
   "license": "MIT",
   "keywords": ["saxo", "finance", "trading", "market-data", "portfolio", "openapi"]
 }
