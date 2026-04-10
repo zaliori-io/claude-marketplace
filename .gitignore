@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Packaged artefacts (generated — distributed via GitHub Releases)
+*.skill
+*.plugin
+
+# User config (contains client_id — not committed)
+# Token files (should never leave the machine)
+~/.config/saxo/

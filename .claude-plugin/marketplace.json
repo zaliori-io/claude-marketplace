@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "saxotrader",
+  "description": "Saxo Bank OpenAPI integration for Claude Code — live prices, instrument resolution, portfolio positions, and account info. Not an official Saxo plugin. This is a private project.",
+  "owner": {
+    "name": "Robert Emsbach"
+  },
+  "plugins": [
+    {
+      "name": "saxotrader",
+      "description": "Live prices, instrument lookup, and portfolio data from your Saxo account. Unofficial MIT-licensed project — not affiliated with Saxo Bank A/S. Read-only, no order placement.",
+      "category": "finance",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/zaliori/claude-marketplace.git",
+        "sha": "c249a84943fe0071ab054b0c905b054b4eac3090"
+      },
+      "homepage": "https://github.com/zaliori/claude-marketplace"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "environment":   "live",
+  "client_id":     "YOUR_APP_KEY_HERE",
+  "redirect_uri":  "http://localhost/saxo-callback",
+  "callback_port": 53682
+}
