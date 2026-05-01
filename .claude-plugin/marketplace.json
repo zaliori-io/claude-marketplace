@@ -9,21 +9,27 @@
   "plugins": [
     {
       "name": "saxotrader",
-      "description": "Live prices, instrument lookup, and portfolio data from your Saxo Bank account — directly in Claude. Read-only, no order placement. v1.2.0 · github.com/zaliori-io/claude-marketplace · hello@zaliori.com · Requires your own Saxo account and app registration. MIT-licensed, not affiliated with Saxo Bank A/S.",
+      "description": "Live prices, instrument lookup, and portfolio data from your Saxo Bank account \u2014 directly in Claude. Read-only, no order placement. v1.2.0 \u00b7 github.com/zaliori-io/claude-marketplace \u00b7 hello@zaliori.com \u00b7 Requires your own Saxo account and app registration. MIT-licensed, not affiliated with Saxo Bank A/S.",
       "version": "1.2.0",
       "author": {
         "name": "zaliori.io",
         "email": "hello@zaliori.com"
       },
       "category": "finance",
-      "keywords": ["saxo", "finance", "trading", "market-data", "portfolio"],
+      "keywords": [
+        "saxo",
+        "finance",
+        "trading",
+        "market-data",
+        "portfolio"
+      ],
       "homepage": "https://github.com/zaliori-io/claude-marketplace",
       "repository": "https://github.com/zaliori-io/claude-marketplace",
       "license": "MIT",
       "source": {
         "source": "github",
         "repo": "zaliori-io/claude-marketplace",
-        "sha": "ecdcb3657445ef3c6b5333c6149bc2cf55a63032"
+        "sha": "b36e6fea05914e60fb64a10aa68c89c5a6538e1a"
       }
     }
   ]
