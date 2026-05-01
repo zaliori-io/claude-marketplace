@@ -488,6 +488,105 @@ check("T27 exchange hours SGX-ST recognised and shows status",
       ("status label shown", any(w in out for w in
                                  ("open", "closed", "pre-market", "post-market"))))
 
+# ── Preflight hook & session cap (BOTH) ──────────────────────────────────────
+print("\n[Preflight hook & session cap]")
+
+# T28 — preflight exits 0 and produces no stdout with a live sim token.
+# This is the normal "every prompt" path: token is fresh, hook stays silent.
+code, out, err = run("saxo_auth.py", "preflight")
+check("T28 preflight exits 0 silently with fresh token",
+      code, out, err,
+      ("exit code 0",        code == 0),
+      ("no stdout",          out.strip() == ""),
+      ("no stderr",          err.strip() == ""))
+
+# T29 — preflight is silent and does nothing when the dormant file is present.
+# Simulates "user already warned; hook should not spam every subsequent prompt".
+import time as _time
+_dormant_path = pathlib.Path.home() / ".config" / "saxo" / "preflight-dormant"
+_had_dormant  = _dormant_path.exists()
+try:
+    _dormant_path.parent.mkdir(parents=True, exist_ok=True)
+    _dormant_path.write_text(str(_time.time() + 3600))   # dormant for 1h
+    code29, out29, err29 = run("saxo_auth.py", "preflight")
+    _dormant_silent = out29.strip() == "" and err29.strip() == "" and code29 == 0
+finally:
+    if _had_dormant:
+        pass    # leave existing dormant file untouched
+    else:
+        try:
+            _dormant_path.unlink()
+        except FileNotFoundError:
+            pass
+
+check("T29 preflight is silent while dormant file is active",
+      0, "", "",
+      ("exit 0, no stdout/stderr", _dormant_silent))
+
+# T30 — _session_alive() logic (in-process unit test, no API).
+# Tests all four branches without touching the keychain or the network.
+try:
+    from saxo_auth import _session_alive, DEFAULT_MAX_SESSION_HOURS
+    _now = int(_time.time())
+    _cfg_4h = {"max_session_hours": 4}
+    _cfg_off = {"max_session_hours": 0}
+
+    _alive_legacy  = _session_alive({}, _cfg_4h)                               # no field → alive
+    _alive_fresh   = _session_alive({"session_started_at": _now - 3600}, _cfg_4h)  # 1h old → alive
+    _alive_expired = _session_alive({"session_started_at": _now - 5 * 3600}, _cfg_4h)  # 5h old → dead
+    _alive_cap_off = _session_alive({"session_started_at": _now - 100 * 3600}, _cfg_off)  # cap=0 → alive
+    _alive_default = DEFAULT_MAX_SESSION_HOURS == 4
+    _session_import_ok = True
+except Exception as _exc:
+    _alive_legacy = _alive_fresh = _alive_cap_off = _alive_default = _session_import_ok = False
+    _alive_expired = True    # wrong — marks the assertion as failed
+    print(f"       (import error: {_exc})")
+
+check("T30 _session_alive() correctly enforces session age cap",
+      0, "", "",
+      ("import succeeds",                _session_import_ok),
+      ("no session_started_at → alive",  _alive_legacy  is True),
+      ("within cap → alive",             _alive_fresh   is True),
+      ("past cap → dead",                _alive_expired is False),
+      ("cap=0 disables limit",           _alive_cap_off is True),
+      ("default cap is 4h",             _alive_default))
+
+# T31 — get_valid_token raises SaxoLoginRequired when session_started_at is
+# past the cap. Uses the real function but with a fake token dict injected
+# in-process — no keychain modification, no network call.
+try:
+    from saxo_auth import get_valid_token, SaxoLoginRequired, _kc_read, _kc_write
+    from unittest.mock import patch as _patch
+
+    _fake_old_tokens = {
+        "access_token":       "fake-expired",
+        "refresh_token":      "fake-refresh",
+        "expires_at":         _now - 100,          # access expired
+        "refresh_expires_at": _now + 3600,         # refresh still valid
+        "session_started_at": _now - 5 * 3600,     # session 5h old → past 4h cap
+    }
+    _cfg_test = {"environment": ENV, "max_session_hours": 4,
+                 "client_id": "x", "redirect_uri": "x", "callback_port": 0}
+
+    _raised_login_required = False
+    _correct_message       = False
+    with _patch("saxo_auth._kc_read", return_value=_fake_old_tokens):
+        try:
+            get_valid_token(_cfg_test)
+        except SaxoLoginRequired as _e:
+            _raised_login_required = True
+            _correct_message       = "cap" in str(_e).lower() or "session" in str(_e).lower()
+    _t31_import_ok = True
+except Exception as _exc:
+    _raised_login_required = _correct_message = _t31_import_ok = False
+    print(f"       (error: {_exc})")
+
+check("T31 get_valid_token raises SaxoLoginRequired when session cap exceeded",
+      0, "", "",
+      ("import and patch succeed",      _t31_import_ok),
+      ("SaxoLoginRequired raised",      _raised_login_required),
+      ("error message mentions session", _correct_message))
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 print("\n" + "=" * 64)
 passed = sum(1 for s, _, _ in results if s == PASS)

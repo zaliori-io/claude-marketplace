@@ -322,6 +322,22 @@ full list. Key ones:
       Prefers fully-open markets over extended-hours; caps at 3 attempts; notes when the
       sibling trades in a different currency from the primary.
 
+### Released (v1.2.0)
+
+- [x] **Silent auth preflight** — a `UserPromptSubmit` hook (`saxo_auth.py preflight`)
+      keeps the rolling refresh window warm whenever the user talks to Claude. Lazy:
+      only refreshes when <5 minutes remain. On session expiry, warns once via
+      `additionalContext` then goes dormant for 1 hour — no prompt spam.
+- [x] **`/saxo-login` slash command** — one-keystroke re-authentication without leaving
+      Claude; clears hook dormancy on success.
+- [x] **Session age cap** — `max_session_hours` config key (default 4h) bounds how long
+      a session can be silently rolled forward, limiting blast radius from a stolen
+      Keychain entry.
+- [x] **PKCE timeout** — 120-second watchdog on the callback server; no more
+      indefinite hang if the browser tab is closed before approval.
+- [x] **Concurrent refresh lock** — `flock` around `_do_refresh` prevents two Claude
+      sessions from racing and invalidating each other's tokens.
+
 ### Released (v1.1.0)
 
 - [x] **Decimal arithmetic** — all prices and quantities are now `decimal.Decimal`,
@@ -330,21 +346,9 @@ full list. Key ones:
 
 ### Planned
 
-- [ ] **Token expiry UX** — pre-call token validity check that produces a clean
-      re-authentication prompt rather than a raw HTTP 401 exception. The 60-minute
-      rolling session means any post-lunch query can hit this without warning.
-- [ ] **Orders blotter** — open and filled orders via `GET /port/v1/orders/me`
-- [ ] **Historical prices** — OHLCV chart data for technical analysis
-- [ ] **FX conversion** — native-currency positions converted to a base currency for consolidated P&L
-- [ ] **Multi-account** — support for users with more than one Saxo account key
-
-### Platform
-
-- [ ] **Windows support** — replace `security` CLI calls in `saxo_auth.py` with
-      Windows Credential Manager (`cmdkey` / `wincred`). The rest of the code is
-      pure Python and should work unchanged.
-- [ ] **Linux support** — use `secret-tool` (libsecret) or fall back to
-      `~/.config/saxo/token.json` with a warning.
+See [open issues](https://github.com/zaliori-io/claude-marketplace/issues) for the
+full backlog, including: orders blotter, historical prices, FX conversion,
+multi-account, Windows/Linux support, and more.
 
 Pull requests welcome, especially for Windows and Linux token storage.
 

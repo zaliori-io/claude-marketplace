@@ -22,7 +22,11 @@ price matters.
 ## Prerequisites
 - Run `python scripts/saxo_auth.py login` once to authenticate via browser. The token
   is stored securely in macOS Keychain and auto-refreshed (rolling 60-minute window).
-  Re-run only after more than 60 minutes of complete inactivity.
+  A `UserPromptSubmit` hook keeps the refresh window warm whenever you talk to Claude,
+  so re-login is only needed after ≥60 minutes of full inactivity, or after the
+  configurable session age cap (`max_session_hours`, default 4h) — whichever comes first.
+- If Claude tells you the Saxo session expired, run the `/saxo-login` slash command
+  (no need to switch to a terminal).
 - Python 3 (no external packages required — all scripts use stdlib only).
 - A Saxo account (sim or live). Sim trial accounts serve prices **during market hours**;
   outside trading hours they return `PriceTypeBid/Ask: NoAccess`. If you get NoAccess,
