@@ -60,3 +60,16 @@ def validate_env(env_arg):
             f"[saxo] Invalid environment '{env_arg}'. "
             f"Valid values: {', '.join(sorted(VALID_ENVS))}."
         )
+
+
+def raise_for_auth(e):
+    """Convert a 401 HTTPError to SaxoLoginRequired with a clean message.
+
+    Call this inside any except urllib.error.HTTPError block before re-raising.
+    Other status codes are left untouched — caller handles them as before.
+    """
+    if e.code == 401:
+        from saxo_auth import SaxoLoginRequired
+        raise SaxoLoginRequired(
+            "Session expired — run: python saxo_auth.py login"
+        ) from None

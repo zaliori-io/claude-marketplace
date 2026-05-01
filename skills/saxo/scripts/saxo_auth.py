@@ -5,6 +5,7 @@ Saxo OpenAPI authentication manager — PKCE flow with macOS Keychain storage.
 Usage:
   python saxo_auth.py login    [--force]   Authenticate via browser
   python saxo_auth.py refresh              Force token refresh now
+  python saxo_auth.py preflight            Silent refresh-if-needed for hooks
   python saxo_auth.py status               Show token validity and expiry times
   python saxo_auth.py logout               Delete stored tokens from Keychain
   python saxo_auth.py token                Print current access token (debug)
@@ -12,6 +13,7 @@ Usage:
 
 import argparse
 import base64
+import fcntl
 import hashlib
 import json
 import os
@@ -65,10 +67,18 @@ AUTH_URLS = {
     },
 }
 
-CONFIG_PATH   = pathlib.Path.home() / ".config" / "saxo" / "config.json"
-KC_PREFIX     = "saxotrader"   # suffixed with "-live" or "-sim"
-KC_ACCOUNT    = "tokens"
-EXPIRY_BUFFER = 60               # treat access token as expired 60 s early
+CONFIG_PATH      = pathlib.Path.home() / ".config" / "saxo" / "config.json"
+LOCK_PATH        = pathlib.Path.home() / ".config" / "saxo" / "refresh.lock"
+DORMANT_PATH     = pathlib.Path.home() / ".config" / "saxo" / "preflight-dormant"
+KC_PREFIX        = "saxotrader"     # suffixed with "-live" or "-sim"
+KC_ACCOUNT       = "tokens"
+EXPIRY_BUFFER    = 60               # treat access token as expired 60 s early
+PKCE_TIMEOUT     = 120              # PKCE callback timeout (seconds)
+LOCK_TIMEOUT     = 5                # seconds to wait for refresh lock
+PREFLIGHT_REFRESH_WHEN_REMAINING = 300   # only refresh if <5 min left in window
+PREFLIGHT_DORMANT_AFTER_FAILURE  = 3600  # silence preflight for 1h after warn
+DEFAULT_MAX_SESSION_HOURS        = 4     # bound on how long a session may live
+                                         # before requiring explicit re-login
 
 # ---------------------------------------------------------------------------
 # 1d — load_config
@@ -102,6 +112,12 @@ def load_config(path=None) -> dict:
         sys.exit(
             f"Config 'environment' must be 'live' or 'sim', got: {cfg['environment']!r}"
         )
+
+    # Optional: cap on session lifetime (hours). After this, refreshes stop and
+    # the user must re-authenticate via the browser. Bounds blast radius if
+    # the keychain entry is exfiltrated. Default is conservative; opt-out by
+    # setting to 0 or a very large number.
+    cfg.setdefault("max_session_hours", DEFAULT_MAX_SESSION_HOURS)
 
     return cfg
 
@@ -168,6 +184,60 @@ def _access_valid(tokens: dict) -> bool:
 
 def _refresh_valid(tokens: dict) -> bool:
     return time.time() < tokens["refresh_expires_at"] - EXPIRY_BUFFER
+
+
+def _session_alive(tokens: dict, config: dict) -> bool:
+    """Return True if the session is within the configured max lifetime cap.
+
+    Tokens minted before this feature was added lack `session_started_at` —
+    treat those as alive (don't break existing logged-in users on upgrade).
+    A `max_session_hours` of 0 disables the cap entirely.
+    """
+    started = tokens.get("session_started_at")
+    if started is None:
+        return True
+    cap_hours = config.get("max_session_hours", DEFAULT_MAX_SESSION_HOURS)
+    if not cap_hours or cap_hours <= 0:
+        return True
+    return time.time() < started + (cap_hours * 3600)
+
+
+class _RefreshLock:
+    """Cross-process flock guarding _do_refresh.
+
+    Prevents two Claude sessions (or any two processes) from racing on the
+    refresh endpoint and invalidating each other's tokens. Best-effort —
+    if lock acquisition times out we proceed anyway rather than fail.
+    """
+
+    def __init__(self, path=LOCK_PATH, timeout=LOCK_TIMEOUT):
+        self.path = path
+        self.timeout = timeout
+        self._fh = None
+
+    def __enter__(self):
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = open(self.path, "w")
+        except OSError:
+            return self    # cannot create lock file; proceed unlocked
+        deadline = time.time() + self.timeout
+        while True:
+            try:
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError:
+                if time.time() >= deadline:
+                    return self    # timed out waiting; proceed unlocked
+                time.sleep(0.1)
+
+    def __exit__(self, *exc):
+        if self._fh is not None:
+            try:
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            self._fh.close()
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +323,9 @@ def _do_refresh(tokens: dict, config: dict) -> dict:
             if "refresh_token_expires_in" in resp
             else tokens["refresh_expires_at"]  # preserve original if absent
         ),
+        # Preserve session start across refreshes — the session_age cap is
+        # measured from the original browser login, not from the latest refresh.
+        "session_started_at": tokens.get("session_started_at", int(time.time())),
     }
     if "refresh_token_expires_in" not in resp:
         print(
@@ -333,13 +406,26 @@ def _run_pkce_flow(config: dict) -> dict:
     print(f"Opening browser for Saxo login ({env})...")
     webbrowser.open(auth_url)
 
+    # Watchdog: shut down the server if no callback arrives within PKCE_TIMEOUT.
+    # Without this, server.serve_forever() blocks indefinitely if the user
+    # closes the browser tab or never approves.
+    timeout_timer = threading.Timer(PKCE_TIMEOUT, server.shutdown)
+    timeout_timer.daemon = True
+    timeout_timer.start()
     try:
-        server.serve_forever()    # blocks until handler calls server.shutdown()
+        server.serve_forever()    # blocks until handler or timer calls shutdown()
     except KeyboardInterrupt:
         raise SaxoAuthError("Login cancelled")
+    finally:
+        timeout_timer.cancel()
 
     if server._auth_error:
         raise SaxoAuthError(f"Auth callback error: {server._auth_error}")
+    if server._auth_code is None:
+        raise SaxoAuthError(
+            f"Login timed out — no callback received within {PKCE_TIMEOUT}s. "
+            f"Re-run: python saxo_auth.py login"
+        )
 
     code = server._auth_code
 
@@ -372,6 +458,7 @@ def _run_pkce_flow(config: dict) -> dict:
         "refresh_token":      resp["refresh_token"],
         "expires_at":         now + resp["expires_in"],
         "refresh_expires_at": now + resp.get("refresh_token_expires_in", 2400),
+        "session_started_at": now,
     }
 
 
@@ -393,9 +480,28 @@ def get_valid_token(config: dict | None = None) -> str:
     if tokens is not None and _access_valid(tokens):
         return tokens["access_token"]
 
+    # Session age cap: stop refreshing past the configured window. Force an
+    # explicit re-login so a long-lived stolen token can't be silently rolled
+    # forward forever.
+    if tokens is not None and not _session_alive(tokens, config):
+        cap = config.get("max_session_hours", DEFAULT_MAX_SESSION_HOURS)
+        raise SaxoLoginRequired(
+            f"Saxo session age cap reached ({cap}h) — run: python saxo_auth.py login"
+        )
+
     if tokens is not None and _refresh_valid(tokens):
-        tokens = _do_refresh(tokens, config)
-        _kc_write(env, tokens)
+        with _RefreshLock():
+            # Re-check under the lock: another process may have just refreshed.
+            tokens = _kc_read(env) or tokens
+            if _access_valid(tokens):
+                return tokens["access_token"]
+            try:
+                tokens = _do_refresh(tokens, config)
+            except SaxoAuthError as e:
+                raise SaxoLoginRequired(
+                    f"Token refresh failed — run: python saxo_auth.py login\n  ({e})"
+                ) from e
+            _kc_write(env, tokens)
         return tokens["access_token"]
 
     raise SaxoLoginRequired(
@@ -476,6 +582,126 @@ def _load_api_check():
 
 
 # ---------------------------------------------------------------------------
+# 1ja — _cmd_preflight (UserPromptSubmit hook entry point)
+# ---------------------------------------------------------------------------
+
+
+def _is_dormant():
+    """Return True if preflight is in cooldown after a recent failure/warning.
+
+    Dormant mode prevents the hook from doing work (and from re-warning) on
+    every prompt when the user has chosen not to re-authenticate. Cleared by
+    a successful login.
+    """
+    try:
+        until = float(DORMANT_PATH.read_text().strip())
+    except (OSError, ValueError):
+        return False
+    return time.time() < until
+
+
+def _set_dormant(seconds=PREFLIGHT_DORMANT_AFTER_FAILURE):
+    try:
+        DORMANT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DORMANT_PATH.write_text(str(time.time() + seconds))
+    except OSError:
+        pass
+
+
+def _clear_dormant():
+    try:
+        DORMANT_PATH.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def _cmd_preflight():
+    """Silent token preflight — designed for the UserPromptSubmit hook.
+
+    Contract:
+      - Always exits 0 (never blocks the user's prompt)
+      - No stdout in the silent paths
+      - Refreshes lazily: only when the rolling refresh window is about to
+        expire (< PREFLIGHT_REFRESH_WHEN_REMAINING seconds left). The data
+        scripts already refresh on demand for access-token expiry, so the
+        hook's only job is to extend the refresh window when it's at risk.
+      - On refresh-token death: emit one additionalContext warning, then go
+        dormant for PREFLIGHT_DORMANT_AFTER_FAILURE seconds (no further
+        keychain reads or warnings) until the user explicitly logs in.
+      - Swallows all errors — a failing hook must not interfere with Claude.
+    """
+    # Cheap dormancy check first — bail out before any keychain access.
+    if _is_dormant():
+        return
+
+    # Config missing → user doesn't use the plugin; silent exit
+    if not CONFIG_PATH.exists():
+        return
+    try:
+        config = load_config()
+    except SystemExit:
+        return    # malformed config — don't error every prompt
+    env = config["environment"]
+
+    try:
+        tokens = _kc_read(env)
+    except SaxoAuthError:
+        return    # corrupt keychain — surfaced clearly when user runs status
+
+    # Never logged in → stay dormant forever (until /saxo-login clears it).
+    # Don't nag the user — they'll run /saxo-login when they want market data.
+    if tokens is None:
+        return
+
+    # Access token still valid → nothing to do.
+    if _access_valid(tokens):
+        return
+
+    # Session age cap reached → stop refreshing, warn once, go dormant.
+    if not _session_alive(tokens, config):
+        cap = config.get("max_session_hours", DEFAULT_MAX_SESSION_HOURS)
+        print(
+            f"Saxo session age cap reached ({cap}h) — if the user wants market "
+            f"data this turn, ask them to run /saxo-login first to re-authenticate."
+        )
+        _set_dormant()
+        return
+
+    if _refresh_valid(tokens):
+        # Only refresh if the rolling window is about to expire. Otherwise the
+        # next data script call will refresh on demand (~200ms first-query cost,
+        # negligible) — no point burning Saxo HTTP calls on idle prompts.
+        remaining = tokens["refresh_expires_at"] - time.time()
+        if remaining > PREFLIGHT_REFRESH_WHEN_REMAINING:
+            return
+
+        try:
+            with _RefreshLock():
+                tokens = _kc_read(env) or tokens
+                if _access_valid(tokens):
+                    return
+                tokens = _do_refresh(tokens, config)
+                _kc_write(env, tokens)
+        except (SaxoAuthError, OSError):
+            # Refresh attempt failed at the very edge of the window. Go dormant
+            # so we don't retry every prompt. Next data call will surface a
+            # clean error via the Issue #1 fix if the user actually needs Saxo.
+            _set_dormant()
+            return
+        return
+
+    # Refresh token dead → user must re-authenticate. Warn once, then go
+    # dormant. The /saxo-login command clears dormancy on success.
+    print(
+        "Saxo session expired — if the user wants market data this turn, "
+        "ask them to run /saxo-login first to re-authenticate."
+    )
+    _set_dormant()
+
+
+# ---------------------------------------------------------------------------
 # 1k — _cmd_status (stub — finalize after rolling/absolute measured at step 6)
 # ---------------------------------------------------------------------------
 
@@ -527,6 +753,7 @@ def main():
     login_p.add_argument("--force", action="store_true",
                          help="Re-authenticate even if a valid token exists")
     sub.add_parser("refresh",   help="Force token refresh now")
+    sub.add_parser("preflight", help="Silent refresh-if-needed (UserPromptSubmit hook)")
     sub.add_parser("status",    help="Show token validity, expiry, and API check result")
     sub.add_parser("logout",    help="Delete stored tokens from Keychain")
     token_p = sub.add_parser("token", help="Print current access token (debug)")
@@ -534,7 +761,17 @@ def main():
                          help="Print the full token instead of a masked preview")
     sub.add_parser("check-api", help="Probe Saxo API schema and record result (L11.1)")
 
-    args   = parser.parse_args()
+    args = parser.parse_args()
+
+    # Preflight runs from a hook on every prompt — it must never sys.exit on
+    # missing/invalid config or surface noise. Dispatch before load_config().
+    if args.command == "preflight":
+        try:
+            _cmd_preflight()
+        except Exception:
+            pass    # belt-and-suspenders: a hook must not break the user's prompt
+        return
+
     config = load_config()
     env    = config["environment"]
 
@@ -542,6 +779,7 @@ def main():
         if not args.force:
             try:
                 get_valid_token(config)
+                _clear_dormant()    # already-valid session → hook can resume
                 print(f"Already logged in ({env}). Use --force to re-authenticate.")
                 return
             except (SaxoLoginRequired, SaxoAuthError):
@@ -551,6 +789,7 @@ def main():
         except SaxoAuthError as e:
             sys.exit(f"[saxo] {e}")
         _kc_write(env, tokens)
+        _clear_dormant()    # successful re-auth → hook resumes work
         print(f"Logged in ({env}). Access token valid for ~20 minutes.")
 
     elif args.command == "refresh":

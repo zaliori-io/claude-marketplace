@@ -40,7 +40,7 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from saxo_auth import get_valid_token, load_config, SaxoLoginRequired, SaxoAuthError
-from saxo_common import BASE_URLS, warn_rate_limits as _warn_rate_limits, validate_env
+from saxo_common import BASE_URLS, warn_rate_limits as _warn_rate_limits, validate_env, raise_for_auth as _raise_for_auth
 
 ASSET_TYPES_DEFAULT = "Stock,Etf,Etn,Etc,Fund"
 ASSET_TYPES_WITH_BONDS = "Stock,Etf,Etn,Etc,Fund,Bond"
@@ -56,6 +56,7 @@ def _get(base, path, params, token):
             _warn_rate_limits(r.headers)
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
+        _raise_for_auth(e)
         correlation = e.headers.get("X-Correlation", "n/a")
         body = e.read().decode(errors="replace")
         raise urllib.error.HTTPError(

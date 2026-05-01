@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from saxo_auth import get_valid_token, load_config, SaxoLoginRequired, SaxoAuthError
-from saxo_common import BASE_URLS, warn_rate_limits as _warn_rate_limits, validate_env
+from saxo_common import BASE_URLS, warn_rate_limits as _warn_rate_limits, validate_env, raise_for_auth as _raise_for_auth
 
 CACHE_PATH = pathlib.Path.home() / ".config" / "saxo" / "exchange-hours.json"
 CACHE_TTL_HOURS = 12  # sessions span 2-3 days; refresh twice daily
@@ -67,6 +67,7 @@ def _fetch_all_exchanges(token, base):
             _warn_rate_limits(r.headers)
             data = json.loads(r.read())
     except urllib.error.HTTPError as e:
+        _raise_for_auth(e)
         correlation = e.headers.get("X-Correlation", "n/a")
         body = e.read().decode(errors="replace")
         raise SaxoAuthError(
